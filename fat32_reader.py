@@ -23,9 +23,7 @@ def get_bytes(f, pos, numBytes):
         formatString = "i"
     else:
         raise Exception("not implemented")
-    if not data:
-        return 0
-    return struct.unpack(ENDIAN_FORMAT + formatString, data)[0]
+    return struct.unpack(ENDIAN_FORMAT + formatString, data)[0] if data else 0
 
 def info():
     
@@ -43,11 +41,9 @@ def get_string(f, offset, size):
     f.seek(offset)
     d = f.read(size)
     if size != 1:
-        return struct.unpack(str(size) + 's', d)[0]
-    v = struct.unpack(str(size) + 'c', d)
-    if not v:
-        return ''
-    return v[0]
+        return struct.unpack(f'{str(size)}s', d)[0]
+    v = struct.unpack(f'{str(size)}c', d)
+    return v[0] if v else ''
 
 def ThisFATSecNum(N):
     return (BPB_RsvdsSecCnt + ((N*4)//BPB_BytesPerSec))
@@ -201,15 +197,15 @@ def read_helper(filename, l, r):
 def deleted_helper():
     files = []
     nxtCluster = currentClus
-    
+
     while nxtCluster < int('0xFFFFFFF8', 16) and nxtCluster < 0xFFFFFF8:
-    
+
         directory_address = firstSectorOfCluster(nxtCluster)*512
-        
+
         for i in range(16):
             line = get_string(f, directory_address+32*i, 11)
             status = get_bytes(f, directory_address+ (32*i) +11, 1)
-            if status == 0x10 or status == 0x20:
+            if status in [0x10, 0x20]:
                 try:
                     line.strip().decode('utf-8')
                 except:
@@ -217,12 +213,12 @@ def deleted_helper():
                     if ' ' in line:
                         l = line.split()
                         line = '.'.join(l)
-                    files.append('_' + line)
-                
+                    files.append(f'_{line}')
+
             else:
                 files.append('')
             f.seek(directory_address+32*i, 0)
-        
+
         next_fat_addr = (ThisFATSecNum(nxtCluster)*512) + ThisFATEntOffset(nxtCluster)
         nxtCluster = get_bytes(f, next_fat_addr, 4)
 
@@ -233,25 +229,25 @@ def deleted_helper():
     
 def ls_helper():
     files = []
-    
+
     nxtCluster = currentClus
     rootList = []
-    
+
     while nxtCluster < int('0xFFFFFFF8', 16) and nxtCluster < 0xFFFFFF8:
-    
+
         directory_address = firstSectorOfCluster(nxtCluster)*512
-        
+
         for i in range(16):
             line = get_string(f, directory_address+32*i, 11)
             status = get_bytes(f, directory_address+ (32*i) +11, 1)
-            if status == 0x10 or status == 0x20:
+            if status in [0x10, 0x20]:
                 line = clean_name(line.strip())            
                 files.append(line)
             else:
                 files.append('')
             rootList.append(directory_address + 32*i)
             f.seek(directory_address+32*i, 0)
-        
+
         next_fat_addr = (ThisFATSecNum(nxtCluster)*512) + ThisFATEntOffset(nxtCluster)
         nxtCluster = get_bytes(f, next_fat_addr, 4)
 
@@ -274,12 +270,12 @@ def clean_name(name):
     
 def main():
     ##main driver code
-    
-    global BPB_BytesPerSec 
-    global BPB_SecPerClus 
+
+    global BPB_BytesPerSec
+    global BPB_SecPerClus
     global BPB_RsvdsSecCnt
-    global BPB_NumFATs 
-    global BPB_FATSz32 
+    global BPB_NumFATs
+    global BPB_FATSz32
     global BPB_FATSzRootEntCnt
     global BPB_RootClus
     global ENDIAN_FORMAT
@@ -288,13 +284,9 @@ def main():
     global BPB_RootEntCnt
     global f
     global abs_path
-    
-    f = open("fat32.img", 'rb')
-    if sys.byteorder == 'little':
-        ENDIAN_FORMAT = '<'
-    else:
-        ENDIAN_FORMAT = '>'
 
+    f = open("fat32.img", 'rb')
+    ENDIAN_FORMAT = '<' if sys.byteorder == 'little' else '>'
     abs_path = []
     BPB_BytesPerSec = get_bytes(f, 11, 2)
     BPB_SecPerClus  = get_bytes(f, 13, 1)
@@ -304,17 +296,17 @@ def main():
     BPB_RootEntCnt = 0
 
     BPB_RootClus = str(get_bytes(f, 44, 4))
-    
+
     rootDirSectors = ((BPB_RootEntCnt * 32) + ( BPB_BytesPerSec -1)) //  BPB_BytesPerSec
     firstDataSector = BPB_RsvdsSecCnt + (BPB_NumFATs *  BPB_FATSz32) + rootDirSectors
-    
+
     BPB_RootAddr = 512*((( int(BPB_RootClus)-2)* BPB_SecPerClus) + firstDataSector)
     currentClus = get_bytes(f, 44, 2)
-    
+
     while True:
         print()
         path = '/' + '/'.join(abs_path)
-        user_input = input(path + "] ")
+        user_input = input(f"{path}] ")
         user_input_list = user_input.split()
         command = user_input_list[0].strip()
         args = user_input_list[1:]
@@ -332,19 +324,19 @@ def main():
 
         elif command == 'stat':
             stat_helper(args[0])
-            
+
         elif command == 'ls':
             ls_helper()
-            
+
         elif command == 'deleted':
             deleted_helper()
-            
+
         elif command == 'read':
             read_helper(args[0], args[1], args[2])
 
         elif command == 'cd':
             cd_helper(args[0])
-            
+
         elif command == 'quit':
             print('Quitting')
             f.close()
